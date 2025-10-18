@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDemoApiKey } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,6 +8,15 @@ export async function GET(req: Request) {
     const accept = req.headers.get("accept") ?? "";
     const base = new URL(req.url);
     const origin = `${base.protocol}//${base.host}`;
+
+    const configuredKeysRaw = (process.env.API_KEYS ?? process.env.API_KEY ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const showKeys = (process.env.SHOW_API_KEYS ?? "false").toLowerCase() === "true";
+    const maskKey = (k: string) => (k.length <= 6 ? "***" : `${k.slice(0, 3)}***${k.slice(-2)}`);
+    const demoKey = getDemoApiKey();
+    const visibleKeys = showKeys ? [demoKey, ...configuredKeysRaw] : [maskKey(demoKey), ...configuredKeysRaw.map(maskKey)];
 
     // If JSON explicitly requested, return a machine-readable descriptor
     if (accept.includes("application/json")) {
@@ -19,6 +29,9 @@ export async function GET(req: Request) {
                 headers: ["x-api-key"],
                 bearer: true,
                 env: ["API_KEYS", "API_KEY"],
+                acceptedKeys: visibleKeys,
+                showKeys,
+                demoKey,
             },
             endpoints: {
                 books: {
@@ -69,6 +82,8 @@ export async function GET(req: Request) {
         <h1>Amana Bookstore API</h1>
         <div class="muted">Base URL: <code>${origin}/api</code></div>
         <p>Explore available endpoints below. For POST routes, include an API key via <code>x-api-key</code> or <code>Authorization: Bearer &lt;token&gt;</code>. Configure allowed keys using <code>API_KEYS</code> (comma-separated) or <code>API_KEY</code> env vars.</p>
+        <p>Accepted API keys: <code>${visibleKeys.length ? visibleKeys.join(", ") : "(none configured)"}</code>${showKeys ? "" : " <span class=\"muted\">(keys masked; set SHOW_API_KEYS=true to reveal)</span>"}</p>
+        <p><strong>Demo key (non-production):</strong> <code>${demoKey}</code></p>
       </header>
 
       <section class="grid">
@@ -115,15 +130,60 @@ export async function GET(req: Request) {
         </div>
       </section>
 
-      <section>
-        <h2>cURL examples</h2>
-        <pre>curl -s ${origin}/api/books | jq .</pre>
-        <pre>curl -s "${origin}/api/books/published?start=2022-01-01&end=2023-12-31" | jq .</pre>
-        <pre>curl -s -X POST ${origin}/api/books \
+  <section>
+    <h2>Copy & paste: request bodies</h2>
+    <h3>New Book</h3>
+    <pre>{
+  "title": "Example Book Title",
+  "author": "Example Author",
+  "description": "Short description of the example book.",
+  "price": 19.99,
+  "image": "/images/example.jpg",
+  "isbn": "978-1111111111",
+  "genre": ["Category"],
+  "tags": ["tag1", "tag2"],
+  "datePublished": "2024-07-15",
+  "pages": 200,
+  "language": "English",
+  "publisher": "Publisher Inc.",
+  "inStock": true,
+  "featured": false
+}</pre>
+    <h3>New Review</h3>
+    <pre>{
+  "bookId": "1",
+  "author": "Reviewer Name",
+  "rating": 5,
+  "title": "Great book!",
+  "comment": "Loved reading this book."
+}</pre>
+  </section>
+
+  <section>
+    <h2>cURL examples</h2>
+    <pre>curl -s ${origin}/api/books | jq .</pre>
+    <pre>curl -s "${origin}/api/books/published?start=2022-01-01&end=2023-12-31" | jq .</pre>
+    <h3>POST book (x-api-key header)</h3>
+    <pre>curl -s -X POST ${origin}/api/books \
   -H 'content-type: application/json' \
-  -H 'x-api-key: &lt;your-key&gt;' \
-  -d '{"title":"Example","author":"Someone","description":"...","price":9.99,"image":"/images/x.jpg","isbn":"978-1111111111","datePublished":"2024-07-15","pages":200,"language":"English","publisher":"Pub","inStock":true}' | jq .</pre>
-      </section>
+  -H 'x-api-key: ${demoKey}' \
+  -d '{"title":"Example Book Title","author":"Example Author","description":"Short description of the example book.","price":19.99,"image":"/images/example.jpg","isbn":"978-1111111111","genre":["Category"],"tags":["tag1","tag2"],"datePublished":"2024-07-15","pages":200,"language":"English","publisher":"Publisher Inc.","inStock":true,"featured":false}' | jq .</pre>
+    <h3>POST book (Bearer token)</h3>
+    <pre>curl -s -X POST ${origin}/api/books \
+  -H 'content-type: application/json' \
+  -H 'Authorization: Bearer ${demoKey}' \
+  -d '{"title":"Example Book Title","author":"Example Author","description":"Short description of the example book.","price":19.99,"image":"/images/example.jpg","isbn":"978-1111111111","genre":["Category"],"tags":["tag1","tag2"],"datePublished":"2024-07-15","pages":200,"language":"English","publisher":"Publisher Inc.","inStock":true,"featured":false}' | jq .</pre>
+    <h3>POST book (query param)</h3>
+    <pre>curl -s -X POST "${origin}/api/books?api_key=${demoKey}" \
+  -H 'content-type: application/json' \
+  -d '{"title":"Example Book Title","author":"Example Author","description":"Short description of the example book.","price":19.99,"image":"/images/example.jpg","isbn":"978-1111111111","genre":["Category"],"tags":["tag1","tag2"],"datePublished":"2024-07-15","pages":200,"language":"English","publisher":"Publisher Inc.","inStock":true,"featured":false}' | jq .</pre>
+
+    <h3>POST review (x-api-key header)</h3>
+    <pre>curl -s -X POST ${origin}/api/reviews \
+  -H 'content-type: application/json' \
+  -H 'x-api-key: ${demoKey}' \
+  -d '{"bookId":"1","author":"Reviewer Name","rating":5,"title":"Great book!","comment":"Loved reading this book."}' | jq .</pre>
+  </section>
 
       <footer class="muted">Tip: Send <code>Accept: application/json</code> to receive this page as JSON.</footer>
     </body>
